@@ -3,8 +3,7 @@ package beamline.miners.trieconformance.trie;
 import beamline.miners.trieconformance.State;
 import beamline.miners.trieconformance.util.Utils;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.io.Serializable;
 
 public class TrieNode implements Serializable {
@@ -14,7 +13,7 @@ public class TrieNode implements Serializable {
     private int minPathLengthToEnd;
     private int maxPathLengthToEnd;
     private TrieNode parent;
-    private TrieNode[] children;
+    private HashMap<String, TrieNode> children;
     private boolean isEndOfTrace;
     private List<Integer> linkedTraces;
     private int level=0;
@@ -50,11 +49,11 @@ public class TrieNode implements Serializable {
         this.parent = parent;
     }
 
-    public TrieNode[] getChildren() {
+    public HashMap<String, TrieNode> getChildren() {
         return children;
     }
 
-    public void setChildren(TrieNode[] children) {
+    public void setChildren(HashMap<String, TrieNode> children) {
         this.children = children;
     }
 
@@ -102,7 +101,7 @@ public class TrieNode implements Serializable {
         this.content = content;
         this.maxChildren = Utils.isPrime(maxChildren)? maxChildren:  Utils.nextPrime(maxChildren);
         //TODO: Change children type to HashMap?
-        this.children = new TrieNode[this.maxChildren];
+        this.children = new HashMap<String, TrieNode>();
         this.minPathLengthToEnd = minPathLengthToEnd;
         this.maxPathLengthToEnd = maxPathLengthToEnd;
         this.parent = parent;
@@ -145,12 +144,13 @@ public class TrieNode implements Serializable {
     }
     public TrieNode getChild(String label)
     {
-        TrieNode result =children[Math.abs(label.hashCode())%maxChildren];
-        if (result != null && !result.getContent().equals(label))
-        {
-            //System.err.println(String.format("Different labels with the same hash code %s and %s", result.getContent(), label));
-            result = null;
-        }
+        // TODO: iterate over children and get node label?
+        TrieNode result = children.get(label);
+//        if (result != null) //&& !result.getContent().equals(label))
+//        {
+//            //System.err.println(String.format("Different labels with the same hash code %s and %s", result.getContent(), label));
+//            result = null;
+//        }
         return result ;
     }
 
@@ -158,35 +158,35 @@ public class TrieNode implements Serializable {
         return isEndOfTrace;
     }
 
-    public TrieNode getChildWithLeastPathLengthDifference( int pathLength)
-    {
+    public TrieNode getChildWithLeastPathLengthDifference( int pathLength) {
         int minPath = pathLength;
         TrieNode child = null;
         int minDiff = Integer.MAX_VALUE;
-        for (TrieNode ch : children)
-            if(ch != null)
-            {
-//                if (!ch.getContent().equals(label))
-//                    continue;
+
+        for (Map.Entry<String, TrieNode> entry : children.entrySet()) {
+            TrieNode ch = entry.getValue();
+            if (ch != null) {
                 int diff = Math.abs(ch.getMinPathLengthToEnd() - minPath);
-                if ( diff < minDiff)
-                {
+                if (diff < minDiff) {
                     child = ch;
                     minDiff = diff;
                 }
 
             }
+        }
         return child;
     }
+
     public List<TrieNode> getAllChildren()
     {
         List<TrieNode> result = new ArrayList<>();
-        for (TrieNode nd : children)
-            if (nd !=null)
-                result.add(nd);
-
+        for (Map.Entry<String,TrieNode> entry : children.entrySet()) {
+            TrieNode ch = entry.getValue();
+            result.add(ch);
+        }
         return result;
     }
+
     public boolean hasChildren()
     {
         return numChildren != 0;
@@ -195,28 +195,17 @@ public class TrieNode implements Serializable {
 
     public TrieNode addChild(TrieNode child)
     {
-//        System.out.println("Hash code "+child.getContent().hashCode());
-        if (children[Math.abs(child.getContent().hashCode())%maxChildren] == null) {
-            children[Math.abs(child.getContent().hashCode()) % maxChildren] = child;
+        if (children.get(child.getContent()) == null) {
+            children.put(child.getContent(), child);
             child.parent = this;
             numChildren++;
+        } else if (child.isEndOfTrace()) {
+            children.get(child.getContent()).setEndOfTrace(child.isEndOfTrace());
         }
-        else
-        {
-            if (!children[Math.abs(child.getContent().hashCode()) % maxChildren].getContent().equals(child.getContent()))
-            {
-                System.err.println("A collision occurred");
-            }
-            else // just double check the is end of trace
-            {
-                if (child.isEndOfTrace())
-                    children[Math.abs(child.getContent().hashCode()) % maxChildren].setEndOfTrace(child.isEndOfTrace());
-            }
-        }
-        this.minPathLengthToEnd = Math.min(this.minPathLengthToEnd, child.getMinPathLengthToEnd()+1);
-        this.maxPathLengthToEnd = Math.max(this.maxPathLengthToEnd, child.getMaxPathLengthToEnd()+1);
-       // return children[child.getContent().hashCode() % maxChildren];
-        return children[Math.abs(child.getContent().hashCode()) % maxChildren];
+        this.minPathLengthToEnd = Math.min(this.minPathLengthToEnd, child.getMinPathLengthToEnd() + 1);
+        this.maxPathLengthToEnd = Math.min(this.maxPathLengthToEnd, child.getMaxPathLengthToEnd() + 1);
+
+        return children.get(child.getContent());
     }
 
     public String toString()
@@ -270,8 +259,6 @@ public class TrieNode implements Serializable {
 
     public int hashCode()
     {
-        // This is not unique - does not take into account the path the node is on
-        // e.g. the "C" in ABC and XYC would return same value
         return this.getPrefix().hashCode();
     }
 
@@ -279,8 +266,9 @@ public class TrieNode implements Serializable {
     {
         TrieNode child;
         child = this;
-        for (TrieNode ch: children)
-        {
+
+        for (Map.Entry<String,TrieNode> entry : children.entrySet()) {
+            TrieNode ch = entry.getValue();
             if (ch==null)
                 continue;
             if (ch.isEndOfTrace()){

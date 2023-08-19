@@ -81,6 +81,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
             }
 
+
             return t;
         }
         catch (Exception e)
@@ -113,7 +114,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
         Long currTime = System.currentTimeMillis();
         //HashMap<String, State> checkResult = checker.check(new ArrayList<>(Arrays.asList(activityName)),caseID);
-        checker.check(new ArrayList<>(Arrays.asList(activityName)),caseID);
+        checker.check(new ArrayList<>(Arrays.asList(Character.toString(service.alphabetize(activityName)))),caseID);
 
         State currentOptimalState = checker.getCurrentOptimalState(caseID,false);;
         while (currentOptimalState==null){
@@ -159,7 +160,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
         public Long getTimeTaken() {return timeTaken;}
 
         public String toString() {
-            return lastEvent.getTraceName()+","+cost+","+timeTaken;
+            return lastEvent.getTraceName()+","+lastEvent.getEventName()+","+cost+","+timeTaken;
         }
     }
 

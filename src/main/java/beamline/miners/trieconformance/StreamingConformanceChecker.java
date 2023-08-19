@@ -13,7 +13,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
 
     protected boolean verbose = false;
 
-    protected LinkedList<String> casesList;
+    protected LinkedHashSet<String> casesSeen;
 
     // Streaming variables
 
@@ -41,7 +41,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
             this.averageTrieLength = trie.getAvgTraceLength();
         }
 
-        casesList = new LinkedList<>();
+        casesSeen = new LinkedHashSet<>();
     }
 
     public State checkForSyncMoves(String event, State currentState){
@@ -351,16 +351,20 @@ public class StreamingConformanceChecker extends ConformanceChecker{
     }
 
     public void handleCaseLimit(String caseId){
-        if (casesList.contains(caseId)) {
-            casesList.remove(caseId);
-            casesList.add(caseId);
+        if (casesSeen.contains(caseId)) {
+            casesSeen.remove(caseId);
+            casesSeen.add(caseId);
         } else {
-            casesList.add(caseId);
+            casesSeen.add(caseId);
         }
         String caseToRemove;
-        while (casesList.size() > this.caseLimit) {
-            caseToRemove = casesList.pop();
-            casesInBuffer.remove(caseToRemove);
+        while (casesSeen.size() > this.caseLimit) {
+            try {
+                caseToRemove = casesSeen.iterator().next();
+                casesInBuffer.remove(caseToRemove);
+            } catch (NoSuchElementException e){
+                break;
+            }
         }
     }
 

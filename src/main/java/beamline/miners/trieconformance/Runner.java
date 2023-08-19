@@ -17,8 +17,8 @@ import java.time.format.DateTimeFormatter;
 
 public class Runner {
     public static void main(String... args) throws Exception {
-        String proxyLog = "input/BPI_2012_1k_sample.xes";
-        String log = "input/BPI_2012_Sim_2k_random_0.2.xes";
+        String proxyLog = "input/BPI_2012_Sim_2k_random_0.2.xes";
+        String log = "input/BPI_2012_1k_sample.xes";
 //        String proxyLog = "input/M1_test.xes";
 //        String log = "input/M1_test3.xes";
 //        String proxyLog = "input/BPI_2020_Sim_2k_random_0.5.xes";
