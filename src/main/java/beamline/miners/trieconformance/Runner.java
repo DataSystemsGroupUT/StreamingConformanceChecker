@@ -1,5 +1,6 @@
 package beamline.miners.trieconformance;
 
+import beamline.sources.MQTTXesSource;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -17,11 +18,12 @@ import java.time.format.DateTimeFormatter;
 
 public class Runner {
     public static void main(String... args) throws Exception {
-        String proxyLog = "input/BPI_2012_Sim_2k_random_0.2.xes";
-        String log = "input/BPI_2012_1k_sample.xes";
+        //String proxyLog = "input/simple_ooo_log_proxy.xes";
+        //String proxyLog = "input/BPI_2012_Sim_2k_random_0.2.xes";
+        //String log = "input/simple_ooo_log.xes";
 //        String proxyLog = "input/M1_test.xes";
 //        String log = "input/M1_test3.xes";
-//        String proxyLog = "input/BPI_2020_Sim_2k_random_0.5.xes";
+        String proxyLog = "input/BPI_2020_Sim_2k_random_0.5.xes";
 //        String log = "input/BPI_2020_1k_sample.xes";
 
         String timeStamp = ZonedDateTime
@@ -29,7 +31,9 @@ public class Runner {
                 .format(DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss")
                 );
 
-        XesLogSource source = new XesLogSource(log);
+        //XesLogSource source = new XesLogSource(log);
+
+        MQTTXesSource source = new MQTTXesSource("tcp://localhost:1883","test","+");
 
         TrieConformance conformance = new TrieConformance(proxyLog);
 
@@ -45,12 +49,6 @@ public class Runner {
                 .keyBy(BEvent::getTraceName)
                 .flatMap(conformance)
                 .addSink(streamingFileSink).setParallelism(1);
-//                .addSink(new SinkFunction<ConformanceResponse>(){
-//                    public void invoke(ConformanceResponse value) throws Exception {
-//                        System.out.println(
-//                                value.getTimeTaken());
-//                    };
-//                });
         env.execute();
     }
 }

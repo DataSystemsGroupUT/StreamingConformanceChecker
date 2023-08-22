@@ -108,6 +108,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
     public ConformanceResponse ingest(BEvent event) {
         String caseID = event.getTraceName();
         String activityName = event.getEventName();
+        Date eventTime = event.getEventTime();
 
         // calculate conformance
         //Pair<State, Integer> returned = miners.replay(caseID, activityName);
