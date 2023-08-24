@@ -156,6 +156,15 @@ public class State implements Comparable<State>, Serializable {
         return tracePostfix;
     }
 
+    public void removeTracePostfixTail(int numOfEventsToRemove) {
+        int counter = 0;
+        for (int i = tracePostfix.size() - 1; i >= 0; i--) {
+            tracePostfix.remove(i);
+            counter++;
+            if (counter >= numOfEventsToRemove){ break; }
+        }
+    }
+
     public TrieNode getNode() {
         return node;
     }

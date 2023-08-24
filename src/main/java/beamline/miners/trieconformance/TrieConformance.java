@@ -108,14 +108,14 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
     public ConformanceResponse ingest(BEvent event) {
         String caseID = event.getTraceName();
         String activityName = event.getEventName();
-        Date eventTime = event.getEventTime();
+        Long eventTime = event.getEventTime().getTime();
 
         // calculate conformance
         //Pair<State, Integer> returned = miners.replay(caseID, activityName);
 
         Long currTime = System.currentTimeMillis();
         //HashMap<String, State> checkResult = checker.check(new ArrayList<>(Arrays.asList(activityName)),caseID);
-        checker.check(new ArrayList<>(Arrays.asList(Character.toString(service.alphabetize(activityName)))),caseID);
+        checker.check(new ArrayList<>(Arrays.asList(Character.toString(service.alphabetize(activityName)))),caseID,new ArrayList<>(Arrays.asList(eventTime)));
 
         State currentOptimalState = checker.getCurrentOptimalState(caseID,false);;
         while (currentOptimalState==null){

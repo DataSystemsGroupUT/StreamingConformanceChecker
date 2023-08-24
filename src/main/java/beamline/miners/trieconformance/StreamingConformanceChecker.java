@@ -26,6 +26,8 @@ public class StreamingConformanceChecker extends ConformanceChecker{
     protected int stateLimit;
     protected int caseLimit;
 
+    protected HashMap<String, TreeMap<Long, List<String>>> casesTimelines;
+
 
 
     public StreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime)
@@ -42,6 +44,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
         }
 
         casesSeen = new LinkedHashSet<>();
+        casesTimelines = new HashMap<>();
     }
 
     public State checkForSyncMoves(String event, State currentState){
@@ -375,29 +378,69 @@ public class StreamingConformanceChecker extends ConformanceChecker{
         return new Alignment();
     }
 
-    public HashMap<String, State> check(List<String> trace, String caseId)
+    public HashMap<String, State> check(List<String> trace, String caseId, List<Long> eventTimes)
     {
 
         traceSize = trace.size();
+        Long eventTime;
+        if (traceSize>1){
+            System.out.println("Not implemented!");
+            return null;
+        } else {
+            eventTime = eventTimes.get(0);
+        }
         State state;
         State previousState;
         StatesBuffer caseStatesInBuffer = null;
         Alignment alg;
-        TrieNode node;
-        TrieNode prev;
         List<String> traceSuffix;
-        int suffixLookAheadLimit;
         HashMap<String, State> currentStates = new HashMap<>();
         ArrayList<State> syncMoveStates = new ArrayList<>();
 
-        // iterate over the trace - choose event by event
-        // modify everything into accepting event instead of list of events
-
+        // Check if case exists in buffer, if yes: populate state buffer; no: create new buffer with root node
         if (casesInBuffer.containsKey(caseId))
         {
             // case exists, fetch last state
             caseStatesInBuffer = casesInBuffer.get(caseId);
             currentStates = caseStatesInBuffer.getCurrentStates();
+
+            // event time awareness:
+            // storage of events received per event time
+            // initial solution: assume that activity+event time has to be unique
+            // if multiple events on the same time - sort by processed time (need to store this as well!)
+            // use a treemap: unix time for key, list of activities for value
+
+            TreeMap<Long, List<String>> caseTimeline = casesTimelines.get(caseId);
+
+            if (eventTime < caseTimeline.lastEntry().getKey()){
+                // the new event has an earlier timestamp than seen previously
+
+                // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
+                NavigableMap<Long, List<String>> higherTimestamps = caseTimeline.tailMap(eventTime, false);
+
+                int numOfEventsToReplay = 0;
+                for (List<String> v: higherTimestamps.values()){
+                    numOfEventsToReplay = numOfEventsToReplay + v.size();
+                }
+
+                for (Iterator<Map.Entry<String, State>> states = currentStates.entrySet().iterator(); states.hasNext(); ) {
+                    Map.Entry<String, State> entry = states.next();
+                    if (entry.getValue().getTracePostfix().size() < numOfEventsToReplay) {
+                        currentStates.remove(entry);
+                    } else {
+                        entry.getValue().removeTracePostfixTail(numOfEventsToReplay);
+                    }
+                }
+            }
+
+            // update the map for case timelines
+            if (caseTimeline.containsKey(eventTime)){
+                caseTimeline.get(eventTime).addAll(trace);
+            } else {
+                caseTimeline.put(eventTime, trace);
+            }
+
+            casesTimelines.put(caseId, caseTimeline);
 
         }
         else
@@ -406,8 +449,13 @@ public class StreamingConformanceChecker extends ConformanceChecker{
 
             int decayTime = findDecayTime(0);
             currentStates.put(new Alignment().toString(), new State(new Alignment(), new ArrayList<String>(), modelTrie.getRoot(), 0, decayTime+1)); // larger decay time because this is decremented in this iteration
+            TreeMap<Long, List<String>> caseTimeline = new TreeMap<>();
+            caseTimeline.put(eventTime,trace);
+            casesTimelines.put(caseId,caseTimeline);
+
         }
 
+        // Loop over all events (activities) in trace
         for(String event:trace){
             // sync moves
             // we iterate over all states
