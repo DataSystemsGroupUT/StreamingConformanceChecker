@@ -20,6 +20,7 @@ import org.deckfour.xes.model.XEvent;
 import org.deckfour.xes.model.XLog;
 import org.deckfour.xes.model.XTrace;
 import beamline.miners.trieconformance.trie.Trie;
+import beamline.miners.trieconformance.util.Configuration.ConformanceCheckerType;
 
 import java.io.*;
 import java.util.*;
@@ -27,7 +28,7 @@ import java.util.*;
 public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> {
     private static Trie proxyTrie;
     private static AlphabetService service;
-    private static StreamingConformanceChecker checker;
+    private static EventTimeAwareStreamingConformanceChecker checker;
 
     private static XLog loadLog(String inputProxyLogFile)
     {
@@ -90,9 +91,9 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
     }
 
-    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier) {
+    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware) {
         this.proxyTrie = constructTrie(proxyLog);
-        this.checker = new StreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true);
+        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware);
 
     }
 

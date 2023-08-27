@@ -9,7 +9,8 @@ public class Configuration {
         TRIE_PREFIX,
         TRIE_RANDOM,
         TRIE_RANDOM_STATEFUL,
-        TRIE_STREAMING
+        TRIE_STREAMING,
+        TRIE_EVENT_TIME_AWARE
     }
 
     public enum LogSortType

@@ -1,5 +1,6 @@
 package beamline.miners.trieconformance;
 
+import beamline.miners.trieconformance.util.Configuration;
 import beamline.sources.MQTTXesSource;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.core.fs.Path;
@@ -20,9 +21,12 @@ import java.time.format.DateTimeFormatter;
 public class Runner {
     public static void main(String... args) throws Exception {
 
-        String logName = "bpi2012";
+        String logName = "bpi2020_travelpermits";
         int minDecayTime = 3;
         float decayTimeMultiplier = 0.3F;
+        boolean eventTimeAware = true;
+        String eventTimeAwareStr = "";
+        if (!eventTimeAware){eventTimeAwareStr="_notaware_";}
 
         String proxyLog = "input/cominds/"+logName+"_100traces.xes.gz";
 
@@ -33,10 +37,11 @@ public class Runner {
 
         MQTTXesSourceWithEventTime source = new MQTTXesSourceWithEventTime("tcp://localhost:1883","cominds","+");
 
-        TrieConformance conformance = new TrieConformance(proxyLog, minDecayTime, decayTimeMultiplier);
+        TrieConformance conformance = new TrieConformance(proxyLog, minDecayTime, decayTimeMultiplier, eventTimeAware);
+
 
         StreamingFileSink<ConformanceResponse> streamingFileSink = StreamingFileSink.forRowFormat(
-                        new Path("output/"+logName+"_"+minDecayTime+"_"+decayTimeMultiplier+"_"+timeStamp), new SimpleStringEncoder<ConformanceResponse>()
+                        new Path("output/"+logName+eventTimeAwareStr+"_"+minDecayTime+"_"+decayTimeMultiplier+"_"+timeStamp), new SimpleStringEncoder<ConformanceResponse>()
                 )
                 .withBucketAssigner(new BasePathBucketAssigner<>())
                 .build();
