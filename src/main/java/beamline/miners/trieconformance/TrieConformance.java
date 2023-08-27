@@ -90,9 +90,9 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
     }
 
-    public TrieConformance(String proxyLog) {
+    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier) {
         this.proxyTrie = constructTrie(proxyLog);
-        this.checker = new StreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,3,0.3F,true);
+        this.checker = new StreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true);
 
     }
 
@@ -107,6 +107,8 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
         String caseID = event.getTraceName();
         String activityName = event.getEventName();
         Long eventTime = event.getEventTime().getTime();
+
+        if (caseID.equals("test")){return null;}
 
         // calculate conformance
         //Pair<State, Integer> returned = miners.replay(caseID, activityName);

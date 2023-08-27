@@ -58,8 +58,8 @@ public class MQTTXesSourceWithEventTime extends BeamlineAbstractSource {
     public void run(SourceContext<BEvent> ctx) throws Exception {
         Queue<BEvent> buffer = new LinkedList<>();
         MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(true);
-        options.setKeepAliveInterval(60);
+        options.setCleanSession(false);
+        options.setKeepAliveInterval(600);
 
         IMqttClient myClient = null;
         try {

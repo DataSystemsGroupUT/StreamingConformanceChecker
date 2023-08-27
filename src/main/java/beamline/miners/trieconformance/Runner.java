@@ -19,8 +19,12 @@ import java.time.format.DateTimeFormatter;
 
 public class Runner {
     public static void main(String... args) throws Exception {
-        String proxyLog = "input/cominds/bpi2017_100traces.xes.gz";
-//        String proxyLog = "input/simple_ooo_log_proxy.xes";
+
+        String logName = "bpi2012";
+        int minDecayTime = 3;
+        float decayTimeMultiplier = 0.3F;
+
+        String proxyLog = "input/cominds/"+logName+"_100traces.xes.gz";
 
         String timeStamp = ZonedDateTime
                 .now(ZoneId.systemDefault())
@@ -29,10 +33,10 @@ public class Runner {
 
         MQTTXesSourceWithEventTime source = new MQTTXesSourceWithEventTime("tcp://localhost:1883","cominds","+");
 
-        TrieConformance conformance = new TrieConformance(proxyLog);
+        TrieConformance conformance = new TrieConformance(proxyLog, minDecayTime, decayTimeMultiplier);
 
         StreamingFileSink<ConformanceResponse> streamingFileSink = StreamingFileSink.forRowFormat(
-                        new Path("output/"+timeStamp), new SimpleStringEncoder<ConformanceResponse>()
+                        new Path("output/"+logName+"_"+minDecayTime+"_"+decayTimeMultiplier+"_"+timeStamp), new SimpleStringEncoder<ConformanceResponse>()
                 )
                 .withBucketAssigner(new BasePathBucketAssigner<>())
                 .build();
