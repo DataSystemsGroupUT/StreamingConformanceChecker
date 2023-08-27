@@ -21,9 +21,7 @@ import org.deckfour.xes.model.XLog;
 import org.deckfour.xes.model.XTrace;
 import beamline.miners.trieconformance.trie.Trie;
 
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
 
 public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> {
@@ -94,7 +92,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
     public TrieConformance(String proxyLog) {
         this.proxyTrie = constructTrie(proxyLog);
-        this.checker = new StreamingConformanceChecker(this.proxyTrie, 1,1,10000,10000,3,0.3F,true);
+        this.checker = new StreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,3,0.3F,true);
 
     }
 
@@ -117,7 +115,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
         //HashMap<String, State> checkResult = checker.check(new ArrayList<>(Arrays.asList(activityName)),caseID);
         checker.check(new ArrayList<>(Arrays.asList(Character.toString(service.alphabetize(activityName)))),caseID,new ArrayList<>(Arrays.asList(eventTime)));
 
-        State currentOptimalState = checker.getCurrentOptimalState(caseID,false);;
+        State currentOptimalState = checker.getCurrentOptimalState(caseID,false);
         while (currentOptimalState==null){
             checker.getCurrentOptimalState(caseID,false);
             if (System.currentTimeMillis()-currTime>10000){
@@ -126,6 +124,20 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
             }
         }
         Long timeTaken = System.currentTimeMillis()-currTime;
+
+//        StatesBuffer sb = checker.casesInBuffer.get(caseID);
+//        System.out.println("-----"+caseID+"__"+currentOptimalState.getAlignment().getTraceSize()+"__"+sb.getCurrentStates().values().size());
+//        if(currentOptimalState.getAlignment().getTraceSize()>38){
+//            for (State s:sb.getCurrentStates().values()){
+//                System.out.print(s.getAlignment().toString(service));
+//                System.out.print("|Suffix:");
+//                System.out.print(s.getTracePostfix());
+//                System.out.print("|Decay Time:");
+//                System.out.println(s.getDecayTime());
+//            }
+//        }
+
+
         return new ConformanceResponse(
                 currentOptimalState.getCostSoFar(),event, currentOptimalState.getAlignment().toString(),timeTaken);
                 //checkResult.get(caseID).getCostSoFar(), event, checkResult.get(caseID).getAlignment().toString());
@@ -161,7 +173,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
         public Long getTimeTaken() {return timeTaken;}
 
         public String toString() {
-            return lastEvent.getTraceName()+","+lastEvent.getEventName()+","+cost+","+timeTaken;
+            return lastEvent.getTraceName()+","+lastEvent.getEventName()+","+cost+","+timeTaken+","+System.currentTimeMillis();
         }
     }
 

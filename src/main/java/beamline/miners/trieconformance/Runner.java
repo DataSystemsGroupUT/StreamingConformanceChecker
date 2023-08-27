@@ -19,22 +19,15 @@ import java.time.format.DateTimeFormatter;
 
 public class Runner {
     public static void main(String... args) throws Exception {
-        String proxyLog = "input/simple_ooo_log_proxy.xes";
-        //String proxyLog = "input/BPI_2012_Sim_2k_random_0.2.xes";
-        //String log = "input/simple_ooo_log.xes";
-//        String proxyLog = "input/M1_test.xes";
-//        String log = "input/M1_test3.xes";
-//        String proxyLog = "input/BPI_2020_Sim_2k_random_0.5.xes";
-//        String log = "input/BPI_2020_1k_sample.xes";
+        String proxyLog = "input/cominds/bpi2017_100traces.xes.gz";
+//        String proxyLog = "input/simple_ooo_log_proxy.xes";
 
         String timeStamp = ZonedDateTime
-                .now(ZoneId.systemDefault())                                // Returns a `ZonedDateTime` object.
+                .now(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss")
                 );
 
-        //XesLogSource source = new XesLogSource(log);
-
-        MQTTXesSourceWithEventTime source = new MQTTXesSourceWithEventTime("tcp://localhost:1883","test","+");
+        MQTTXesSourceWithEventTime source = new MQTTXesSourceWithEventTime("tcp://localhost:1883","cominds","+");
 
         TrieConformance conformance = new TrieConformance(proxyLog);
 
@@ -43,6 +36,8 @@ public class Runner {
                 )
                 .withBucketAssigner(new BasePathBucketAssigner<>())
                 .build();
+
+        System.out.println("Trie built, listening to MQTT stream ...");
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env

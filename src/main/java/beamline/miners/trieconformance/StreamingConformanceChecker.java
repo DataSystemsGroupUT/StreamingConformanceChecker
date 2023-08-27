@@ -4,8 +4,12 @@ import beamline.miners.trieconformance.alignment.Alignment;
 import beamline.miners.trieconformance.alignment.Move;
 import beamline.miners.trieconformance.trie.Trie;
 import beamline.miners.trieconformance.trie.TrieNode;
+import org.apache.commons.lang3.tuple.MutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class StreamingConformanceChecker extends ConformanceChecker{
 
@@ -13,7 +17,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
 
     protected boolean verbose = false;
 
-    protected LinkedHashSet<String> casesSeen;
+    protected ConcurrentLinkedQueue<String> casesSeen;
 
     // Streaming variables
 
@@ -26,8 +30,8 @@ public class StreamingConformanceChecker extends ConformanceChecker{
     protected int stateLimit;
     protected int caseLimit;
 
-    protected HashMap<String, TreeMap<Long, List<String>>> casesTimelines;
-
+    //protected HashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
+    protected ConcurrentHashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
 
 
     public StreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime)
@@ -43,8 +47,8 @@ public class StreamingConformanceChecker extends ConformanceChecker{
             this.averageTrieLength = trie.getAvgTraceLength();
         }
 
-        casesSeen = new LinkedHashSet<>();
-        casesTimelines = new HashMap<>();
+        casesSeen = new ConcurrentLinkedQueue<>();
+        casesTimelines = new ConcurrentHashMap<>();
     }
 
     public State checkForSyncMoves(String event, State currentState){
@@ -396,6 +400,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
         List<String> traceSuffix;
         HashMap<String, State> currentStates = new HashMap<>();
         ArrayList<State> syncMoveStates = new ArrayList<>();
+        List<String> newTrace = null; //placeholder for out of order event handling
 
         // Check if case exists in buffer, if yes: populate state buffer; no: create new buffer with root node
         if (casesInBuffer.containsKey(caseId))
@@ -410,37 +415,62 @@ public class StreamingConformanceChecker extends ConformanceChecker{
             // if multiple events on the same time - sort by processed time (need to store this as well!)
             // use a treemap: unix time for key, list of activities for value
 
-            TreeMap<Long, List<String>> caseTimeline = casesTimelines.get(caseId);
+            if (casesTimelines.containsKey(caseId)) {
+                Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelinePairs = casesTimelines.get(caseId);
+                TreeMap<Long, List<String>> caseTimeline = caseTimelinePairs.getLeft();
 
-            if (eventTime < caseTimeline.lastEntry().getKey()){
-                // the new event has an earlier timestamp than seen previously
+                if (eventTime < caseTimeline.lastEntry().getKey()) {
+                    // the new event has an earlier timestamp than seen previously
 
-                // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
-                NavigableMap<Long, List<String>> higherTimestamps = caseTimeline.tailMap(eventTime, false);
 
-                int numOfEventsToReplay = 0;
-                for (List<String> v: higherTimestamps.values()){
-                    numOfEventsToReplay = numOfEventsToReplay + v.size();
-                }
+                    // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
+                    NavigableMap<Long, List<String>> higherTimestamps = caseTimeline.tailMap(eventTime, false);
 
-                for (Iterator<Map.Entry<String, State>> states = currentStates.entrySet().iterator(); states.hasNext(); ) {
-                    Map.Entry<String, State> entry = states.next();
-                    if (entry.getValue().getTracePostfix().size() < numOfEventsToReplay) {
-                        currentStates.remove(entry);
-                    } else {
-                        entry.getValue().removeTracePostfixTail(numOfEventsToReplay);
+                    int numOfEventsToReplay = 0;
+                    for (List<String> v : higherTimestamps.values()) {
+                        numOfEventsToReplay = numOfEventsToReplay + v.size();
                     }
+
+
+                    for (Iterator<Map.Entry<String, State>> states = currentStates.entrySet().iterator(); states.hasNext(); ) {
+                        Map.Entry<String, State> entry = states.next();
+                        if (entry.getValue().getTracePostfix().size() < numOfEventsToReplay) {
+                            states.remove();
+                        } else {
+                            entry.getValue().removeTracePostfixTail(numOfEventsToReplay);
+                        }
+                    }
+
+                    // generate a new trace that needs to be replayed
+                    newTrace = new ArrayList<>(trace);
+                    for (Map.Entry<Long, List<String>> entry : higherTimestamps.entrySet()) {
+                        List<String> value = entry.getValue();
+                        newTrace.addAll(value);
+                    }
+
                 }
-            }
 
-            // update the map for case timelines
-            if (caseTimeline.containsKey(eventTime)){
-                caseTimeline.get(eventTime).addAll(trace);
+                // update the map for case timelines
+                if (caseTimeline.containsKey(eventTime)) {
+                    caseTimeline.get(eventTime).addAll(trace);
+                } else {
+                    caseTimeline.put(eventTime, trace);
+                }
+
+                List<Pair<String, Long>> activitiesTimestamps = caseTimelinePairs.getRight();
+                activitiesTimestamps.add(new MutablePair<>(trace.get(0), eventTime));
+
+                casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
             } else {
-                caseTimeline.put(eventTime, trace);
+                TreeMap<Long, List<String>> caseTimeline = new TreeMap<>();
+                caseTimeline.put(eventTime,trace);
+                List<Pair<String,Long>> activitiesTimestamps = new ArrayList<>();
+                activitiesTimestamps.add(new MutablePair<>(trace.get(0),eventTime));
+//                System.out.println(caseId);
+                casesTimelines.put(caseId, new MutablePair<>(caseTimeline,activitiesTimestamps));
             }
 
-            casesTimelines.put(caseId, caseTimeline);
+            if(newTrace!=null){trace=newTrace;}
 
         }
         else
@@ -451,12 +481,17 @@ public class StreamingConformanceChecker extends ConformanceChecker{
             currentStates.put(new Alignment().toString(), new State(new Alignment(), new ArrayList<String>(), modelTrie.getRoot(), 0, decayTime+1)); // larger decay time because this is decremented in this iteration
             TreeMap<Long, List<String>> caseTimeline = new TreeMap<>();
             caseTimeline.put(eventTime,trace);
-            casesTimelines.put(caseId,caseTimeline);
+            List<Pair<String,Long>> activitiesTimestamps = new ArrayList<>();
+            activitiesTimestamps.add(new MutablePair<>(trace.get(0),eventTime));
+
+            casesTimelines.put(caseId, new MutablePair<>(caseTimeline,activitiesTimestamps));
 
         }
 
+        int traceCounter = 0;
         // Loop over all events (activities) in trace
         for(String event:trace){
+            traceCounter++;
             // sync moves
             // we iterate over all states
             for (Iterator<Map.Entry<String, State>> states = currentStates.entrySet().iterator(); states.hasNext(); ) {
@@ -488,7 +523,9 @@ public class StreamingConformanceChecker extends ConformanceChecker{
                         List<String> postfix = new ArrayList<>();
                         postfix.add(event);
                         previousState.addTracePostfix(postfix);
-                        previousState.setDecayTime(previousDecayTime - 1);
+                        if (trace.size()==traceCounter){ // this is for event aware solution not decrementing decay time multiple times
+                            previousState.setDecayTime(previousDecayTime - 1);
+                        }
                     }
                 }
 
@@ -547,7 +584,9 @@ public class StreamingConformanceChecker extends ConformanceChecker{
                 if(previousStateDecayTime<2){
                     currentStates.remove(previousState.getAlignment().toString());
                 } else {
-                    previousState.setDecayTime(previousStateDecayTime-1);
+                    if (trace.size()==traceCounter){ // this is for event aware solution not decrementing decay time multiple times
+                        previousState.setDecayTime(previousStateDecayTime - 1);
+                    }
                 }
 
             }
@@ -573,6 +612,28 @@ public class StreamingConformanceChecker extends ConformanceChecker{
         }
 
         casesInBuffer.put(caseId, caseStatesInBuffer);
+
+        // update the timelines -->
+        int eventsInBuffer = caseStatesInBuffer.getStateWithLargestSuffix().getTracePostfix().size();
+        int eventsInTimelines = casesTimelines.get(caseId).getRight().size();
+        Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelines = null;
+        while (eventsInTimelines>eventsInBuffer){
+            caseTimelines = casesTimelines.get(caseId);
+            Pair<String,Long> eventToRemove = caseTimelines.getRight().remove(0);
+            if(caseTimelines.getLeft().get(eventToRemove.getRight()).size()>1){
+                caseTimelines.getLeft().get(eventToRemove.getRight()).remove(0);
+            } else {
+                caseTimelines.getLeft().remove(eventToRemove.getRight());
+            }
+            eventsInTimelines--;
+        }
+
+        if (caseTimelines!= null && caseTimelines.getRight().size()==0){
+            casesTimelines.remove(caseId);
+        } else if (caseTimelines!= null){
+            casesTimelines.put(caseId,caseTimelines);
+        }
+
         handleCaseLimit(caseId);
         return currentStates;
 

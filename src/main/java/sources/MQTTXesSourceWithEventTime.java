@@ -59,11 +59,11 @@ public class MQTTXesSourceWithEventTime extends BeamlineAbstractSource {
         Queue<BEvent> buffer = new LinkedList<>();
         MqttConnectOptions options = new MqttConnectOptions();
         options.setCleanSession(true);
-        options.setKeepAliveInterval(30);
+        options.setKeepAliveInterval(60);
 
         IMqttClient myClient = null;
         try {
-            myClient = new MqttClient(brokerHost, UUID.randomUUID().toString());
+            myClient = new MqttClient(brokerHost, "IWS");
             myClient.setCallback(new MqttCallback() {
 
                 @Override
@@ -96,7 +96,7 @@ public class MQTTXesSourceWithEventTime extends BeamlineAbstractSource {
 
         while(isRunning()) {
             while (isRunning() && buffer.isEmpty()) {
-                Thread.sleep(100l);
+                Thread.sleep(50l);
             }
             if (isRunning()) {
                 synchronized (ctx.getCheckpointLock()) {

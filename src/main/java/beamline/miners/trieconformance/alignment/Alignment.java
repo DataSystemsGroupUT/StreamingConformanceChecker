@@ -38,45 +38,67 @@ public class Alignment {
         return totalCost;
     }
 
+    // simpler toString:
     public String toString()
     {
         StringBuilder result = new StringBuilder();
-        StringBuilder logTrace = new StringBuilder();
-        StringBuilder modelTrace = new StringBuilder();
-        result.append(String.format("Total cost:%d\n", totalCost));
         for (Move m: moves)
         {
-            result.append(m.toString()+"\n");
-            if (!m.getLogMove().equals(">>"))
-                logTrace.append(m.getLogMove());
-            if(!m.getModelMove().equals(">>"))
-                modelTrace.append(m.getModelMove());
+            result.append(m.toString()+"|");
         }
-        result.append("Log: "+logTrace.toString()+"\n");
-        result.append("Mod: "+modelTrace.toString());
         return result.toString();
-
     }
 
     public String toString(AlphabetService service)
     {
         StringBuilder result = new StringBuilder();
-        StringBuilder logTrace = new StringBuilder();
-        StringBuilder modelTrace = new StringBuilder();
-        result.append(String.format("Total cost:%d\n", totalCost));
         for (Move m: moves)
         {
-            result.append(m.toString(service)+"\n");
-            if (!m.getLogMove().equals(">>"))
-                logTrace.append( service.deAlphabetize(m.getLogMove().charAt(0)));
-            if(!m.getModelMove().equals(">>"))
-                modelTrace.append(service.deAlphabetize(m.getModelMove().charAt(0)));
+            result.append(m.toString(service)+"|");
         }
-        result.append("Log: "+logTrace.toString()+"\n");
-        result.append("Mod: "+modelTrace.toString());
         return result.toString();
-
     }
+
+    // old toString methods:
+//    public String toString()
+//    {
+//        StringBuilder result = new StringBuilder();
+//        StringBuilder logTrace = new StringBuilder();
+//        StringBuilder modelTrace = new StringBuilder();
+//        result.append(String.format("Total cost:%d\n", totalCost));
+//        for (Move m: moves)
+//        {
+//            result.append(m.toString()+"\n");
+//            if (!m.getLogMove().equals(">>"))
+//                logTrace.append(m.getLogMove());
+//            if(!m.getModelMove().equals(">>"))
+//                modelTrace.append(m.getModelMove());
+//        }
+//        result.append("Log: "+logTrace.toString()+"\n");
+//        result.append("Mod: "+modelTrace.toString());
+//        return result.toString();
+//
+//    }
+
+//    public String toString(AlphabetService service)
+//    {
+//        StringBuilder result = new StringBuilder();
+//        StringBuilder logTrace = new StringBuilder();
+//        StringBuilder modelTrace = new StringBuilder();
+//        result.append(String.format("Total cost:%d\n", totalCost));
+//        for (Move m: moves)
+//        {
+//            result.append(m.toString(service)+"\n");
+//            if (!m.getLogMove().equals(">>"))
+//                logTrace.append( service.deAlphabetize(m.getLogMove().charAt(0)));
+//            if(!m.getModelMove().equals(">>"))
+//                modelTrace.append(service.deAlphabetize(m.getModelMove().charAt(0)));
+//        }
+//        result.append("Log: "+logTrace.toString()+"\n");
+//        result.append("Mod: "+modelTrace.toString());
+//        return result.toString();
+//
+//    }
 
     public List<Move> getMoves()
     {
