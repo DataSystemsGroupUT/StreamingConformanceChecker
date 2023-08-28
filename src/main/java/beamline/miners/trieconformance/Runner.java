@@ -28,7 +28,7 @@ public class Runner {
         String eventTimeAwareStr = "";
         if (!eventTimeAware){eventTimeAwareStr="_notaware_";}
 
-        String proxyLog = "input/cominds/"+logName+"_100traces.xes.gz";
+        String proxyLog = "input/"+logName+"_100traces.xes.gz";
 
         String timeStamp = ZonedDateTime
                 .now(ZoneId.systemDefault())
