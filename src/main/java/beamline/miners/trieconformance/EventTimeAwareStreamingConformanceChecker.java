@@ -23,7 +23,9 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
 
     protected boolean replayWithLogMoves = true;
     protected int minDecayTime; // = 3;
-    protected float decayTimeMultiplier; // = 0.3F;
+
+    protected float decayTimeMultiplierFloor;
+    protected volatile float decayTimeMultiplier; // = 0.3F;
     protected boolean discountedDecayTime; // = true; // if set to false then uses fixed minDecayTime value
     protected int averageTrieLength;
 
@@ -34,6 +36,8 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
     //protected HashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
     protected ConcurrentHashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
 
+    protected float ewmaAlpha = 0.005F;
+
 
     public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware)
     {
@@ -42,6 +46,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         this.caseLimit = caseLimit;
         this.minDecayTime = minDecayTime;
         this.decayTimeMultiplier = decayTimeMultiplier;
+        this.decayTimeMultiplierFloor = decayTimeMultiplier;
         this.discountedDecayTime = discountedDecayTime;
 
         if (this.discountedDecayTime){
@@ -50,8 +55,17 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
 
         this.eventTimeAware = eventTimeAware;
 
-        casesSeen = new ConcurrentLinkedQueue<>();
-        casesTimelines = new ConcurrentHashMap<>();
+        this.casesSeen = new ConcurrentLinkedQueue<>();
+        this.casesTimelines = new ConcurrentHashMap<>();
+    }
+
+    public void updateDecayTimeMultiplier(boolean outOfOrder) {
+        // Exponentially Weighted Moving Average on boolean data
+        float value = outOfOrder ? 1.0F : 0.0F;
+        this.decayTimeMultiplier = this.ewmaAlpha * value + (1 - this.ewmaAlpha) * this.decayTimeMultiplier;
+        if (this.decayTimeMultiplier < this.decayTimeMultiplierFloor) {
+            this.decayTimeMultiplier = this.decayTimeMultiplierFloor;
+        }
     }
 
     public State checkForSyncMoves(String event, State currentState){
@@ -418,12 +432,16 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
             // if multiple events on the same time - sort by processed time (need to store this as well!)
             // use a treemap: unix time for key, list of activities for value
             if(eventTimeAware) {
-                if (casesTimelines.containsKey(caseId)) {
-                    Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelinePairs = casesTimelines.get(caseId);
+                if (this.casesTimelines.containsKey(caseId)) {
+                    Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelinePairs = this.casesTimelines.get(caseId);
                     TreeMap<Long, List<String>> caseTimeline = caseTimelinePairs.getLeft();
 
                     if (eventTime < caseTimeline.lastEntry().getKey()) {
                         // the new event has an earlier timestamp than seen previously
+                        // i.e., this is an out-of-order event
+
+                        // first, update the decayTime using the EWMA formula
+                        updateDecayTimeMultiplier(true);
 
 
                         // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
@@ -451,6 +469,10 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                             newTrace.addAll(value);
                         }
 
+//                    }
+                    } else {
+                        //event is in order, update the decay time multiplier
+                        updateDecayTimeMultiplier(false);
                     }
 
                     // update the map for case timelines
@@ -463,14 +485,14 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                     List<Pair<String, Long>> activitiesTimestamps = caseTimelinePairs.getRight();
                     activitiesTimestamps.add(new MutablePair<>(trace.get(0), eventTime));
 
-                    casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
+                    this.casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
                 } else {
                     TreeMap<Long, List<String>> caseTimeline = new TreeMap<>();
                     caseTimeline.put(eventTime, trace);
                     List<Pair<String, Long>> activitiesTimestamps = new ArrayList<>();
                     activitiesTimestamps.add(new MutablePair<>(trace.get(0), eventTime));
                     //                System.out.println(caseId);
-                    casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
+                    this.casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
                 }
 
                 if (newTrace != null) {
@@ -492,7 +514,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                 List<Pair<String, Long>> activitiesTimestamps = new ArrayList<>();
                 activitiesTimestamps.add(new MutablePair<>(trace.get(0), eventTime));
 
-                casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
+                this.casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
             }
 
         }
@@ -625,10 +647,10 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         // update the timelines -->
         if (eventTimeAware) {
             int eventsInBuffer = caseStatesInBuffer.getStateWithLargestSuffix().getTracePostfix().size();
-            int eventsInTimelines = casesTimelines.get(caseId).getRight().size();
+            int eventsInTimelines = this.casesTimelines.get(caseId).getRight().size();
             Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelines = null;
             while (eventsInTimelines > eventsInBuffer) {
-                caseTimelines = casesTimelines.get(caseId);
+                caseTimelines = this.casesTimelines.get(caseId);
                 Pair<String, Long> eventToRemove = caseTimelines.getRight().remove(0);
                 if (caseTimelines.getLeft().get(eventToRemove.getRight()).size() > 1) {
                     caseTimelines.getLeft().get(eventToRemove.getRight()).remove(0);
@@ -639,9 +661,9 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
             }
 
             if (caseTimelines != null && caseTimelines.getRight().size() == 0) {
-                casesTimelines.remove(caseId);
+                this.casesTimelines.remove(caseId);
             } else if (caseTimelines != null) {
-                casesTimelines.put(caseId, caseTimelines);
+                this.casesTimelines.put(caseId, caseTimelines);
             }
         }
 

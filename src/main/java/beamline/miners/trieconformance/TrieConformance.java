@@ -120,7 +120,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
         State currentOptimalState = checker.getCurrentOptimalState(caseID,false);
         while (currentOptimalState==null){
-            checker.getCurrentOptimalState(caseID,false);
+            currentOptimalState = checker.getCurrentOptimalState(caseID,false);
             if (System.currentTimeMillis()-currTime>10000){
                 return new ConformanceResponse(
                         -1,event, "unknown", 5000L);
