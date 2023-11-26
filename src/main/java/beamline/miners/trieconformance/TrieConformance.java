@@ -91,9 +91,9 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
     }
 
-    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware) {
+    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware, boolean adaptable) {
         this.proxyTrie = constructTrie(proxyLog);
-        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware);
+        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable);
 
     }
 
@@ -111,11 +111,9 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
         if (caseID.equals("test")){return null;}
 
-        // calculate conformance
-        //Pair<State, Integer> returned = miners.replay(caseID, activityName);
 
         Long currTime = System.currentTimeMillis();
-        //HashMap<String, State> checkResult = checker.check(new ArrayList<>(Arrays.asList(activityName)),caseID);
+
         checker.check(new ArrayList<>(Arrays.asList(Character.toString(service.alphabetize(activityName)))),caseID,new ArrayList<>(Arrays.asList(eventTime)));
 
         State currentOptimalState = checker.getCurrentOptimalState(caseID,false);
@@ -127,19 +125,6 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
             }
         }
         Long timeTaken = System.currentTimeMillis()-currTime;
-
-//        StatesBuffer sb = checker.casesInBuffer.get(caseID);
-//        System.out.println("-----"+caseID+"__"+currentOptimalState.getAlignment().getTraceSize()+"__"+sb.getCurrentStates().values().size());
-//        if(currentOptimalState.getAlignment().getTraceSize()>38){
-//            for (State s:sb.getCurrentStates().values()){
-//                System.out.print(s.getAlignment().toString(service));
-//                System.out.print("|Suffix:");
-//                System.out.print(s.getTracePostfix());
-//                System.out.print("|Decay Time:");
-//                System.out.println(s.getDecayTime());
-//            }
-//        }
-
 
         return new ConformanceResponse(
                 currentOptimalState.getCostSoFar(),event, currentOptimalState.getAlignment().toString(),timeTaken);

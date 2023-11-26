@@ -155,6 +155,9 @@ public class State implements Comparable<State>, Serializable {
     public List<String> getTracePostfix() {
         return tracePostfix;
     }
+    public int getTracePostfixSize() {
+        return tracePostfix.size();
+    }
 
     public void removeTracePostfixTail(int numOfEventsToRemove) {
         int counter = 0;

@@ -150,7 +150,7 @@ public class Alignment {
     public String modelProjection()
     {
         StringBuilder sb = new StringBuilder();
-        this.getMoves().stream().filter(x -> !x.getModelMove().equals(">>")).forEach(e -> sb.append(e));
+        this.getMoves().stream().filter(x -> !x.getModelMove().equals(">>")).forEach(e -> sb.append(e.getModelMove().trim()));
         return sb.toString();
     }
 }

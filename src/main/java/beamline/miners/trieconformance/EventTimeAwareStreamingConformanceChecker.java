@@ -30,6 +30,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
     protected int averageTrieLength;
 
     protected boolean eventTimeAware;
+    protected boolean adaptable;
     protected int stateLimit;
     protected int caseLimit;
 
@@ -39,7 +40,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
     protected float ewmaAlpha = 0.005F;
 
 
-    public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware)
+    public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware, boolean adaptable)
     {
         super(trie, logCost, modelCost, stateLimit);
         this.stateLimit = stateLimit; //  to-be implemented
@@ -54,6 +55,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         }
 
         this.eventTimeAware = eventTimeAware;
+        this.adaptable = adaptable;
 
         this.casesSeen = new ConcurrentLinkedQueue<>();
         this.casesTimelines = new ConcurrentHashMap<>();
@@ -282,8 +284,8 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                 } else {
                     // just want to return the latest / current state. This state is prefix-alignment type, not full alignment
 
-                    decayTime = findDecayTime(s.getAlignment().getTraceSize());
-                    if(s.getDecayTime() == decayTime & s.getTracePostfix().size()==0){
+                    //decayTime = findDecayTime(s.getAlignment().getTraceSize());
+                    if(s.getTracePostfix().size()==0){
                         return s;
                     }
                 }
@@ -440,8 +442,8 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                         // the new event has an earlier timestamp than seen previously
                         // i.e., this is an out-of-order event
 
-                        // first, update the decayTime using the EWMA formula
-                        updateDecayTimeMultiplier(true);
+                        // first, update the decayTime using the EWMA formula if running the method as adaptable
+                        if (adaptable) updateDecayTimeMultiplier(true);
 
 
                         // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
@@ -470,9 +472,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                         }
 
 //                    }
-                    } else {
-                        //event is in order, update the decay time multiplier
-                        updateDecayTimeMultiplier(false);
+                    } else if (adaptable){ updateDecayTimeMultiplier(false); //event is in order, update the decay time multiplier
                     }
 
                     // update the map for case timelines
@@ -648,22 +648,35 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         if (eventTimeAware) {
             int eventsInBuffer = caseStatesInBuffer.getStateWithLargestSuffix().getTracePostfix().size();
             int eventsInTimelines = this.casesTimelines.get(caseId).getRight().size();
-            Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelines = null;
+            Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelinePairs = null;
+            TreeMap<Long, List<String>> caseTimeline = null;
             while (eventsInTimelines > eventsInBuffer) {
-                caseTimelines = this.casesTimelines.get(caseId);
-                Pair<String, Long> eventToRemove = caseTimelines.getRight().remove(0);
-                if (caseTimelines.getLeft().get(eventToRemove.getRight()).size() > 1) {
-                    caseTimelines.getLeft().get(eventToRemove.getRight()).remove(0);
+                caseTimelinePairs = this.casesTimelines.get(caseId);
+                caseTimeline = caseTimelinePairs.getLeft();
+                Map.Entry<Long,List<String>> earliestTime = caseTimeline.firstEntry();
+                String earliestActivity = earliestTime.getValue().get(0);
+                //remove the earliest activity
+                if (earliestTime.getValue().size()>1){
+                    earliestTime.getValue().remove(0);
                 } else {
-                    caseTimelines.getLeft().remove(eventToRemove.getRight());
+                    caseTimeline.remove(earliestTime.getKey());
                 }
+                // remove the element also from the right side of case timelines
+                for (int i = 0; i<caseTimelinePairs.getRight().size();i++){
+                    Pair<String, Long> p = caseTimelinePairs.getRight().get(i);
+                    if (p.getRight().equals(earliestTime.getKey()) && p.getLeft().equals(earliestActivity)){
+                        caseTimelinePairs.getRight().remove(i);
+                        break;
+                    }
+                }
+
                 eventsInTimelines--;
             }
 
-            if (caseTimelines != null && caseTimelines.getRight().size() == 0) {
+            if (caseTimelinePairs != null && caseTimelinePairs.getRight().size() == 0) {
                 this.casesTimelines.remove(caseId);
-            } else if (caseTimelines != null) {
-                this.casesTimelines.put(caseId, caseTimelines);
+            } else if (caseTimelinePairs != null) {
+                this.casesTimelines.put(caseId, caseTimelinePairs);
             }
         }
 
