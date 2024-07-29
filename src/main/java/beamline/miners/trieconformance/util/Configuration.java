@@ -28,6 +28,13 @@ public class Configuration {
         LOG_MOVE,
         MODEL_MOVE
     }
+    public enum PartialOrderType
+    {
+        NONE, // partial order is not handled, same as DOLAP version
+        FREQUENCY_RANDOM, //break-even is solved by random
+        MINITRIE,
+        FREQUENCY_MINITRIE //break-even is solved by minitrie
+    }
     private ConformanceCheckerType confCheckerType;
 
     private String proxyLog;

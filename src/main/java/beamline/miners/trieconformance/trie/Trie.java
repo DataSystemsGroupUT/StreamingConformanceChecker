@@ -5,10 +5,7 @@ package beamline.miners.trieconformance.trie;
 import beamline.miners.trieconformance.util.Utils;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-
+import java.util.*;
 public class Trie implements Serializable {
 
     private final TrieNode root;
@@ -18,13 +15,21 @@ public class Trie implements Serializable {
     private int size=0;
     private int numberOfEvents=0;
     protected HashMap<Integer,String> traceIndexer;
+    private int maxPatternSize;
+    private HashMap<List<String>, Integer> patternFrequency;
+    private List<Map.Entry<List<String>, Integer>> patternFrequencySorted;
 
-    public Trie(int maxChildren)
+    public Trie(int maxChildren, int maxPatternSize)
     {
         this.maxChildren = Utils.nextPrime(maxChildren);
+        this.maxPatternSize = maxPatternSize;
         root = new TrieNode("dummy", maxChildren, Integer.MAX_VALUE, Integer.MIN_VALUE, false,null);
         traceIndexer = new HashMap<>();
         leaves = new ArrayList<>();
+        patternFrequency = new HashMap<>();
+        // patternFrequencyQueue will be a priority queue that is sorted by the value of the map
+        // this is so that we can loop over the patterns starting from the most frequent ones.
+        patternFrequencySorted = new ArrayList<>();
     }
     public int getMaxChildren()
     {
@@ -36,8 +41,7 @@ public class Trie implements Serializable {
         addTrace(trace, internalTraceIndex);
 
     }
-    public void addTrace(List<String> trace, int traceIndex)
-    {
+    public void addTrace(List<String> trace, int traceIndex) {
         TrieNode current = root;
         int minLengthToEnd = trace.size();
         if (minLengthToEnd > 0)
@@ -62,8 +66,56 @@ public class Trie implements Serializable {
             current.addLinkedTraceIndex(traceIndex);
             numberOfEvents+=sb.length();
             traceIndexer.put(traceIndex, sb.toString());
+            updatePatternFrequency(trace);
         }
 
+    }
+
+    private void updatePatternFrequency(List<String> trace) {
+        // this method updates the pattern frequency. lengthLimit allows to limit the size of the patterns
+        int lengthLimit = Math.min(trace.size(), maxPatternSize);
+        for (int length = 2; length <= lengthLimit; length++) {
+            for (int start = 0; start <= trace.size() - length; start++) {
+                List<String> pattern = new ArrayList<>();
+                for (int i = start; i < start + length; i++) {
+                    pattern.add(trace.get(i));
+                }
+                patternFrequency.put(pattern, patternFrequency.getOrDefault(pattern, 0) + 1);
+            }
+        }
+    }
+
+    public List<TrieNode> matchInHops(String evt, TrieNode startFromThisNode, int maxHops){
+        List<TrieNode> matches = new ArrayList<>();
+        List<TrieNode> subMatches;
+        TrieNode currentNode = startFromThisNode;
+        TrieNode matchedNode;
+        matchedNode = currentNode.getChild(evt);
+        if (matchedNode!=null){
+            matches.add(matchedNode);
+        }
+        if (maxHops>1){
+            for(TrieNode c:currentNode.getAllChildren()) {
+                subMatches = matchInHops(evt, c, maxHops - 1);
+                if (subMatches != null){
+                    matches.addAll(subMatches);
+                }
+
+            }
+        }
+        // dilemma: make this return null or empty list?
+        if (matches.size()==0){
+            matches = null;
+        }
+        return matches;
+    }
+
+    public List getPatternFrequencySorted(){
+        if (patternFrequencySorted.size()==0) {
+            patternFrequencySorted.addAll(patternFrequency.entrySet());
+            patternFrequencySorted.sort((e1, e2) -> e2.getValue().compareTo(e1.getValue()));
+        }
+        return patternFrequencySorted;
     }
     public TrieNode getRoot()
     {

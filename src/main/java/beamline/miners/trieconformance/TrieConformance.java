@@ -21,6 +21,7 @@ import org.deckfour.xes.model.XLog;
 import org.deckfour.xes.model.XTrace;
 import beamline.miners.trieconformance.trie.Trie;
 import beamline.miners.trieconformance.util.Configuration.ConformanceCheckerType;
+import beamline.miners.trieconformance.util.Configuration.PartialOrderType;
 
 import java.io.*;
 import java.util.*;
@@ -51,7 +52,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
         return null;
     }
 
-    private static Trie constructTrie(String proxyLog){
+    private static Trie constructTrie(String proxyLog, int maxPatternSize){
         service = new AlphabetService();
         XLog inputProxyLog = loadLog(proxyLog);
         try {
@@ -64,7 +65,7 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
                 attClassifier = new XEventAttributeClassifier("concept:name",new String[]{"concept:name"});
             XLogInfo logInfo = XLogInfoFactory.createLogInfo(inputProxyLog,attClassifier);
 
-            Trie t = new Trie(99999);
+            Trie t = new Trie(99999, maxPatternSize);
             List<String> templist;
             for (XTrace trace : inputProxyLog) {
                 templist = new ArrayList<String>();
@@ -92,8 +93,12 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
     }
 
     public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware, boolean adaptable) {
-        this.proxyTrie = constructTrie(proxyLog);
-        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable);
+        this.proxyTrie = constructTrie(proxyLog, 0);
+        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable, PartialOrderType.FREQUENCY_RANDOM);
+    }
+    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware, boolean adaptable, int maxPatternSize, PartialOrderType backToTheOrder) {
+        this.proxyTrie = constructTrie(proxyLog, maxPatternSize);
+        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable, backToTheOrder);
 
     }
 
@@ -111,17 +116,25 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
         if (caseID.equals("test")){return null;}
 
-
         Long currTime = System.currentTimeMillis();
 
         checker.check(new ArrayList<>(Arrays.asList(Character.toString(service.alphabetize(activityName)))),caseID,new ArrayList<>(Arrays.asList(eventTime)));
 
         State currentOptimalState = checker.getCurrentOptimalState(caseID,false);
+
+//        if (caseID.equals("swap_05_193849")){System.out.println("DEBUG");}
+
+        Long getOptStateTime = System.currentTimeMillis();
         while (currentOptimalState==null){
             currentOptimalState = checker.getCurrentOptimalState(caseID,false);
-            if (System.currentTimeMillis()-currTime>10000){
+            if (System.currentTimeMillis()-getOptStateTime>1000){
                 return new ConformanceResponse(
-                        -1,event, "unknown", 5000L);
+                        9999,event, "unknown", 9999L);
+            }
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
         }
         Long timeTaken = System.currentTimeMillis()-currTime;

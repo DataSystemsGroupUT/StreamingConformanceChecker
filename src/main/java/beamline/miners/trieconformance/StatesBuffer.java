@@ -1,14 +1,14 @@
 package beamline.miners.trieconformance;
 
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 //
 
 public class StatesBuffer {
 
-    protected HashMap<String, State> currentStates;
+    protected ConcurrentHashMap<String, State> currentStates;
 
     public StatesBuffer (String algString, State state){
 
@@ -16,17 +16,17 @@ public class StatesBuffer {
 
     }
 
-    public StatesBuffer (HashMap currentStates){
+    public StatesBuffer (ConcurrentHashMap currentStates){
 
         this.currentStates = currentStates;
 
     }
 
-    public void setCurrentStates(HashMap<String, State> currentStates){
+    public void setCurrentStates(ConcurrentHashMap<String, State> currentStates){
         this.currentStates = currentStates;
     }
 
-    public HashMap<String, State> getCurrentStates() {
+    public ConcurrentHashMap<String, State> getCurrentStates() {
         return currentStates;
     }
     public State getStateWithLargestSuffix() {

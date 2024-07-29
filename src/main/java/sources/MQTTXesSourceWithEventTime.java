@@ -3,6 +3,7 @@ package sources;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import beamline.sources.BeamlineAbstractSource;
 import org.eclipse.paho.client.mqttv3.IMqttClient;
@@ -56,7 +57,7 @@ public class MQTTXesSourceWithEventTime extends BeamlineAbstractSource {
 
     @Override
     public void run(SourceContext<BEvent> ctx) throws Exception {
-        Queue<BEvent> buffer = new LinkedList<>();
+        Queue<BEvent> buffer = new ConcurrentLinkedQueue<>();
         MqttConnectOptions options = new MqttConnectOptions();
         options.setCleanSession(true);
         options.setKeepAliveInterval(600);
@@ -96,7 +97,7 @@ public class MQTTXesSourceWithEventTime extends BeamlineAbstractSource {
 
         while(isRunning()) {
             while (isRunning() && buffer.isEmpty()) {
-                Thread.sleep(50l);
+                Thread.sleep(5l);
             }
             if (isRunning()) {
                 synchronized (ctx.getCheckpointLock()) {

@@ -4,12 +4,14 @@ import beamline.miners.trieconformance.alignment.Alignment;
 import beamline.miners.trieconformance.alignment.Move;
 import beamline.miners.trieconformance.trie.Trie;
 import beamline.miners.trieconformance.trie.TrieNode;
+import beamline.miners.trieconformance.util.Configuration.PartialOrderType;
+
 import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecker{
 
@@ -34,13 +36,16 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
     protected int stateLimit;
     protected int caseLimit;
 
-    //protected HashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
     protected ConcurrentHashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
 
     protected float ewmaAlpha = 0.005F;
 
+    protected PartialOrderType backToTheOrderType;
 
-    public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware, boolean adaptable)
+
+
+
+    public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware, boolean adaptable, PartialOrderType backToTheOrderType)
     {
         super(trie, logCost, modelCost, stateLimit);
         this.stateLimit = stateLimit; //  to-be implemented
@@ -59,6 +64,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
 
         this.casesSeen = new ConcurrentLinkedQueue<>();
         this.casesTimelines = new ConcurrentHashMap<>();
+        this.backToTheOrderType = backToTheOrderType;
     }
 
     public void updateDecayTimeMultiplier(boolean outOfOrder) {
@@ -243,7 +249,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
     public State getCurrentOptimalState(String caseId, boolean finalState){ //
         State state;
         StatesBuffer caseStatesInBuffer;
-        HashMap<String, State> currentStates;
+        ConcurrentHashMap<String, State> currentStates;
         List<State> statesList = new ArrayList<>();
 
         List<State> optimalStates = new ArrayList<>();
@@ -394,6 +400,264 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         }
     }
 
+    private static void permute(List<String> input, int start, List<List<String>> permutations) {
+        // this is a recursive method for getting all permutations of the list
+        if (start == input.size() - 1) {
+            // we have reached the first element
+            permutations.add(new ArrayList<>(input));
+        } else {
+            for (int i = start; i < input.size(); i++) {
+                Collections.swap(input, start, i);
+                permute(input, start + 1, permutations);
+                Collections.swap(input, start, i); // this is used for backtracking
+            }
+        }
+    }
+
+    public List<String> backToTheOrder(List <String> input, List<TrieNode> startingNodes){
+
+        List<String> output = new ArrayList<>();;
+        List<List<String>> outputCandidates = new ArrayList<>();
+        List<String> pattern;
+
+        // if the input gets a full match, we don't compute further
+        for (TrieNode n:startingNodes){
+            if (modelTrie.matchCompletely(input,n)!=null){
+                return input;
+            }
+        }
+
+        // first we generate all permutations of the input array
+        // NB! limit the number of permutations. If input size > 10?
+        // Inspiration from: https://www.baeldung.com/java-array-permutations
+
+        List<List<String>> permutations = new ArrayList<>();
+        permute(input, 0, permutations);
+
+        // 2nd level: try to get a complete match on any permutation don't compute further
+        for (TrieNode n:startingNodes){
+            for (List<String> p:permutations){
+                if (modelTrie.matchCompletely(p,n)!=null){
+                    return p;
+                }
+            }
+        }
+
+        // none of the permutations gets a full match, so we attempt to find the optimal permutation.
+        // The PartialOrderType parameter defines which optimizations we attempt.
+        if (backToTheOrderType.equals(PartialOrderType.FREQUENCY_RANDOM)) {
+            // this is the frequency based approach
+            // we choose the permutation that is most frequent in the trie
+            List<Map.Entry<List<String>, Integer>> patternFrequencies = modelTrie.getPatternFrequencySorted();
+            int currentFrequency = 0;
+            int tempFrequency;
+
+            for (Map.Entry<List<String>,Integer> patternMap:patternFrequencies) {
+                tempFrequency = patternMap.getValue();
+                if ((tempFrequency<currentFrequency)&(outputCandidates.size()>0)){
+                    // there is at least one candidate and now the frequency has decreased. Let's break out of the loop
+                    break;
+                }
+                pattern = patternMap.getKey();
+                if (permutations.contains(pattern)){
+                    outputCandidates.add(pattern);
+                }
+                currentFrequency = patternMap.getValue();
+
+            }
+
+            // if break-even then get random entry
+            if (outputCandidates.size() > 1) {
+                Random rand = new Random();
+                output = outputCandidates.get(rand.nextInt(outputCandidates.size()));
+            } else if (outputCandidates.size() == 1) {
+                output = outputCandidates.get(0);
+            } else {
+                output = input;
+            }
+
+        } else if (backToTheOrderType.equals(PartialOrderType.MINITRIE)) {
+            // minitrie (greedy) solution
+            // we switch between match and matchInHops until one permutation remains or permutations have run out of events
+            // OR the hop size becomes larger than permutation size
+            int inputSize = input.size();
+            boolean solutionFound = false;
+            List<List<String>> candidatePermutations = new ArrayList<>(permutations);
+            List<List<String>> tempCandidatePermutations;
+            TrieNode candidateNode;
+
+            int matchLength;
+            int currentMaxLength = 0;
+            ConcurrentMap<List<String>,CopyOnWriteArrayList<Pair<List<String>,TrieNode>>> permutationTracker = new ConcurrentHashMap<>();
+            List<String> subPermutation;
+            CopyOnWriteArrayList<Pair<List<String>,TrieNode>> subPermutationHolder;
+            // in this loop, we try to find the permutations that get the longest initial substring match
+            for (List<String> p:permutations) {
+                for (TrieNode n : startingNodes) {
+                    candidateNode = modelTrie.match(p,n);
+                    if (candidateNode!=null){
+                        matchLength = candidateNode.getLevel()-n.getLevel();
+                        if (matchLength>currentMaxLength){
+                            currentMaxLength = matchLength;
+                            subPermutation = new ArrayList<>(p.subList(currentMaxLength,p.size())); // filter the subperm to only include relevant events
+                            permutationTracker.clear(); // clear the list as we have a new optimal candidate
+                            subPermutationHolder = new CopyOnWriteArrayList<>();
+                            subPermutationHolder.add(new MutablePair<>(subPermutation,candidateNode));
+                            permutationTracker.put(p,subPermutationHolder);
+                        } else if (matchLength==currentMaxLength){
+                            subPermutation = new ArrayList<>(p.subList(currentMaxLength,p.size()));
+                            if (permutationTracker.containsKey(p)){
+                                permutationTracker.get(p).add(new MutablePair<>(subPermutation,candidateNode));
+                            } else {
+                                subPermutationHolder = new CopyOnWriteArrayList<>();
+                                subPermutationHolder.add(new MutablePair<>(subPermutation,candidateNode));
+                                permutationTracker.put(p,subPermutationHolder);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (permutationTracker.size()==1){
+                // there was only a single match so we return it
+                return permutationTracker.keySet().iterator().next();
+            }
+
+            // we now have two possibilities:
+            // 1) permutationTracker has 0 entries --> there is no match, so we need to do a hop as first step
+            // 2) permutationTracker has more than 1 entry --> we need to do hops from the subPermutations
+            // NB also need to keep track of hops, as it only makes sense to do hops as long as hops<input.size()
+            // e.g. if input = [A,B,C] we should not do more than 2 hops (model moves)
+
+            if (permutationTracker.size()==0) {
+                // fill the tracker with all possibilities
+                for (List<String> p : permutations) {
+                    for (TrieNode n : startingNodes) {
+                        subPermutationHolder = new CopyOnWriteArrayList<>();
+                        subPermutationHolder.add(new MutablePair<>(p, n));
+                        permutationTracker.put(p, subPermutationHolder);
+                    }
+                }
+            }
+
+            ConcurrentMap<List<String>,CopyOnWriteArrayList<Pair<List<String>,TrieNode>>> tempPermutationTracker = new ConcurrentHashMap<>(permutationTracker);
+            List<TrieNode> candidateNodes;
+            TrieNode startingNode;
+            List<String> tempSubPermutation;
+
+            int hops = 2, usedHops = 2;
+            int hopLength;
+            while (!solutionFound) {
+                int currentMinHopLength = Integer.MAX_VALUE;
+                permutationTracker.clear();
+                for (ConcurrentMap.Entry<List<String>, CopyOnWriteArrayList<Pair<List<String>, TrieNode>>> entry : tempPermutationTracker.entrySet()) {
+                    List<String> p = entry.getKey();
+                    List<Pair<List<String>, TrieNode>> v = entry.getValue();
+                    for (Pair<List<String>, TrieNode> subP : v) {
+                        tempSubPermutation = subP.getLeft();
+                        startingNode = subP.getRight();
+                        candidateNodes = modelTrie.matchInHops(tempSubPermutation.get(0), startingNode, hops);
+                        if (candidateNodes != null) {
+                            for (TrieNode c : candidateNodes) {
+                                hopLength = c.getLevel() - startingNode.getLevel();
+                                if (hopLength < currentMinHopLength) {
+                                    currentMinHopLength = hopLength;
+                                    subPermutation = new ArrayList<>(tempSubPermutation.subList(hops-1, tempSubPermutation.size())); // filter the subperm to only include relevant events
+                                    permutationTracker.clear(); // clear the list as we have a new optimal candidate
+                                    subPermutationHolder = new CopyOnWriteArrayList<>();
+                                    subPermutationHolder.add(new MutablePair<>(subPermutation, c));
+                                    permutationTracker.put(p, subPermutationHolder);
+                                } else if (hopLength == currentMinHopLength) {
+                                    subPermutation = new ArrayList<>(tempSubPermutation.subList(hops-1, tempSubPermutation.size()));
+                                    if (permutationTracker.containsKey(p)) {
+                                        permutationTracker.get(p).add(new MutablePair<>(subPermutation, c));
+                                    } else {
+                                        subPermutationHolder = new CopyOnWriteArrayList<>();
+                                        subPermutationHolder.add(new MutablePair<>(subPermutation, c));
+                                        permutationTracker.put(p, subPermutationHolder);
+                                    }
+                                }
+
+                            }
+                        }
+
+                    }
+                }
+
+                usedHops++;
+
+                // two possibilities: permutationTracker empty --> increase hop size (as long as hops < inputSize)
+                // permutationTracker not empty --> try to do matches
+                //hops++;
+                if (permutationTracker.size()==1){
+                    // there was only a single match so we return it
+                    return permutationTracker.keySet().iterator().next();
+                } else if (permutationTracker.size()==0 & usedHops <= inputSize){
+                    hops++;
+                    // we should retry the hops
+                } else if (permutationTracker.size()>0){
+                    // try to do match
+                    currentMaxLength = 0;
+                    tempPermutationTracker = permutationTracker;
+                    for (ConcurrentMap.Entry<List<String>, CopyOnWriteArrayList<Pair<List<String>, TrieNode>>> entry : tempPermutationTracker.entrySet()) {
+                        List<String> p = entry.getKey();
+                        List<Pair<List<String>, TrieNode>> v = entry.getValue();
+                        for (Pair<List<String>, TrieNode> subP : v) {
+                            tempSubPermutation = subP.getLeft();
+                            startingNode = subP.getRight();
+                            candidateNode = modelTrie.match(tempSubPermutation,startingNode);
+                            if (candidateNode!=null){
+                                matchLength = candidateNode.getLevel()-startingNode.getLevel();
+                                if (matchLength>currentMaxLength){
+                                    currentMaxLength = matchLength;
+                                    subPermutation = new ArrayList<>(tempSubPermutation.subList(currentMaxLength,tempSubPermutation.size())); // filter the subperm to only include relevant events
+                                    permutationTracker.clear(); // clear the list as we have a new optimal candidate
+                                    subPermutationHolder = new CopyOnWriteArrayList<>();
+                                    subPermutationHolder.add(new MutablePair<>(subPermutation,candidateNode));
+                                    permutationTracker.put(p,subPermutationHolder);
+                                } else if (matchLength==currentMaxLength){
+                                    subPermutation = new ArrayList<>(tempSubPermutation.subList(currentMaxLength,tempSubPermutation.size()));
+                                    if (permutationTracker.containsKey(p)){
+                                        permutationTracker.get(p).add(new MutablePair<>(subPermutation,candidateNode));
+                                    } else {
+                                        subPermutationHolder = new CopyOnWriteArrayList<>();
+                                        subPermutationHolder.add(new MutablePair<>(subPermutation,candidateNode));
+                                        permutationTracker.put(p,subPermutationHolder);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (permutationTracker.size()==1){
+                        // there was only a single match so we return it
+                        return permutationTracker.keySet().iterator().next();
+                    }
+
+                    tempPermutationTracker = permutationTracker;
+
+                } else if (usedHops>inputSize){
+                    solutionFound=true;
+                    if (output.size()==0){
+                        output = input;
+                    }
+                }
+
+            }
+
+
+
+            // current
+        } else {
+            // not implemented
+            output = input;
+        }
+
+
+
+        return output;
+
+    }
 
 
     public Alignment check(List<String> trace){
@@ -401,7 +665,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         return new Alignment();
     }
 
-    public HashMap<String, State> check(List<String> trace, String caseId, List<Long> eventTimes)
+    public ConcurrentHashMap<String, State> check(List<String> trace, String caseId, List<Long> eventTimes)
     {
 
         traceSize = trace.size();
@@ -417,15 +681,15 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         StatesBuffer caseStatesInBuffer = null;
         Alignment alg;
         List<String> traceSuffix;
-        HashMap<String, State> currentStates = new HashMap<>();
+        ConcurrentHashMap<String, State> currentStates = new ConcurrentHashMap<>();
         ArrayList<State> syncMoveStates = new ArrayList<>();
         List<String> newTrace = null; //placeholder for out of order event handling
 
         // Check if case exists in buffer, if yes: populate state buffer; no: create new buffer with root node
-        if (casesInBuffer.containsKey(caseId))
+        if (getCasesInBuffer().containsKey(caseId))
         {
             // case exists, fetch last state
-            caseStatesInBuffer = casesInBuffer.get(caseId);
+            caseStatesInBuffer = getCasesInBuffer().get(caseId);
             currentStates = caseStatesInBuffer.getCurrentStates();
 
             // event time awareness:
@@ -437,24 +701,66 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                 if (this.casesTimelines.containsKey(caseId)) {
                     Pair<TreeMap<Long, List<String>>, List<Pair<String, Long>>> caseTimelinePairs = this.casesTimelines.get(caseId);
                     TreeMap<Long, List<String>> caseTimeline = caseTimelinePairs.getLeft();
+                    List<String> backToTheOrderEvents = null;
 
-                    if (eventTime < caseTimeline.lastEntry().getKey()) {
+                    if ((eventTime <= caseTimeline.lastEntry().getKey()&backToTheOrderType!=PartialOrderType.NONE)|eventTime<caseTimeline.lastEntry().getKey()) {
                         // the new event has an earlier timestamp than seen previously
                         // i.e., this is an out-of-order event
 
-                        // first, update the decayTime using the EWMA formula if running the method as adaptable
-                        if (adaptable) updateDecayTimeMultiplier(true);
+                        // update the decayTime using the EWMA formula if running the method as adaptable
+                        // NB this is now in the backToTheOrderType if-else statement, as there is a corner case where the events might actually be in correct order.
+                        // (when the new event has the same timestamp as highest timestamp in event time store, and it is in fact a valid order. E.g., we have A,B with timestamp 1 and we get C with timestamp 1 and ABC is valid path in model)
 
 
-                        // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
-                        NavigableMap<Long, List<String>> higherTimestamps = caseTimeline.tailMap(eventTime, false);
+
+                        // back to the order - check if this timestamp already has events
+                        // if yes --> frequency OR minitrie
+
+                        // generate a new trace that needs to be replayed
+                        newTrace = new ArrayList<>();
+                        NavigableMap<Long, List<String>> higherTimestamps;
 
                         int numOfEventsToReplay = 0;
-                        for (List<String> v : higherTimestamps.values()) {
-                            numOfEventsToReplay = numOfEventsToReplay + v.size();
+
+                        if (backToTheOrderType==PartialOrderType.NONE){
+                            // same behavior as in DOLAP paper (no handling of partial orders)
+                            higherTimestamps = caseTimeline.tailMap(eventTime, false);
+                            for (List<String> v : higherTimestamps.values()) {
+                                numOfEventsToReplay = numOfEventsToReplay + v.size();
+                            }
+                            newTrace.addAll(trace);
+                            if (adaptable) updateDecayTimeMultiplier(true);
+                        } else if (caseTimeline.containsKey(eventTime)){
+                            // this timestamp has events
+                            List<String> partialOrderEvents = new ArrayList<>(caseTimeline.get(eventTime));
+                            partialOrderEvents.addAll(trace);
+                            // get number of events in caseTimelines --> get also the ones that have the current timestamp
+                            higherTimestamps = caseTimeline.tailMap(eventTime, true);
+                            List<TrieNode> startingNodes = new ArrayList<>();
+                            for (List<String> v : higherTimestamps.values()) {
+                                numOfEventsToReplay = numOfEventsToReplay + v.size();
+                            }
+                            for (State s: currentStates.values()){
+                                if (s.getTracePostfixSize()==numOfEventsToReplay){
+                                    startingNodes.add(s.getNode());
+                                }
+                            }
+                            backToTheOrderEvents = backToTheOrder(partialOrderEvents, startingNodes);
+                            newTrace.addAll(backToTheOrderEvents);
+                            if (!backToTheOrderEvents.equals(partialOrderEvents)){
+                                if (adaptable) updateDecayTimeMultiplier(true);
+                            }
+                        } else {
+                            // get number of events in caseTimelines --> only interested in the ones that have higher timestamp
+                            higherTimestamps = caseTimeline.tailMap(eventTime, false);
+                            newTrace.addAll(trace);
+                            for (List<String> v : higherTimestamps.values()) {
+                                numOfEventsToReplay = numOfEventsToReplay + v.size();
+                            }
+                            if (adaptable) updateDecayTimeMultiplier(true);
                         }
 
-
+                        // remove either the state or the state suffix up to the number of events that need to be replayed
                         for (Iterator<Map.Entry<String, State>> states = currentStates.entrySet().iterator(); states.hasNext(); ) {
                             Map.Entry<String, State> entry = states.next();
                             if (entry.getValue().getTracePostfix().size() < numOfEventsToReplay) {
@@ -465,8 +771,10 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                         }
 
                         // generate a new trace that needs to be replayed
-                        newTrace = new ArrayList<>(trace);
                         for (Map.Entry<Long, List<String>> entry : higherTimestamps.entrySet()) {
+                            if (entry.getKey().equals(eventTime)){
+                                continue; // these events have already been added above (newTrace.addAll(...))
+                            }
                             List<String> value = entry.getValue();
                             newTrace.addAll(value);
                         }
@@ -476,7 +784,10 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                     }
 
                     // update the map for case timelines
-                    if (caseTimeline.containsKey(eventTime)) {
+                    if (caseTimeline.containsKey(eventTime) & backToTheOrderType!=PartialOrderType.NONE) {
+                        caseTimeline.remove(eventTime);
+                        caseTimeline.put(eventTime, backToTheOrderEvents);
+                    } else if (caseTimeline.containsKey(eventTime)){
                         caseTimeline.get(eventTime).addAll(trace);
                     } else {
                         caseTimeline.put(eventTime, trace);
@@ -491,7 +802,6 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                     caseTimeline.put(eventTime, trace);
                     List<Pair<String, Long>> activitiesTimestamps = new ArrayList<>();
                     activitiesTimestamps.add(new MutablePair<>(trace.get(0), eventTime));
-                    //                System.out.println(caseId);
                     this.casesTimelines.put(caseId, new MutablePair<>(caseTimeline, activitiesTimestamps));
                 }
 
@@ -653,7 +963,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
             while (eventsInTimelines > eventsInBuffer) {
                 caseTimelinePairs = this.casesTimelines.get(caseId);
                 caseTimeline = caseTimelinePairs.getLeft();
-                Map.Entry<Long,List<String>> earliestTime = caseTimeline.firstEntry();
+                ConcurrentMap.Entry<Long,List<String>> earliestTime = caseTimeline.firstEntry();
                 String earliestActivity = earliestTime.getValue().get(0);
                 //remove the earliest activity
                 if (earliestTime.getValue().size()>1){
