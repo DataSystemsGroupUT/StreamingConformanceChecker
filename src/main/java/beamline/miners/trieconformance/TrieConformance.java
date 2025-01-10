@@ -5,22 +5,17 @@ import beamline.miners.trieconformance.TrieConformance.ConformanceResponse;
 import beamline.miners.trieconformance.util.AlphabetService;
 import beamline.models.algorithms.StreamMiningAlgorithm;
 import beamline.models.responses.Response;
-import org.apache.commons.collections4.queue.CircularFifoQueue;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.flink.configuration.Configuration;
 import org.deckfour.xes.classification.XEventAttributeClassifier;
-import org.deckfour.xes.classification.XEventClass;
 import org.deckfour.xes.classification.XEventClassifier;
 import org.deckfour.xes.in.XesXmlGZIPParser;
 import org.deckfour.xes.in.XesXmlParser;
 import org.deckfour.xes.info.XLogInfo;
 import org.deckfour.xes.info.XLogInfoFactory;
-import org.deckfour.xes.info.impl.XLogInfoImpl;
 import org.deckfour.xes.model.XEvent;
 import org.deckfour.xes.model.XLog;
 import org.deckfour.xes.model.XTrace;
 import beamline.miners.trieconformance.trie.Trie;
-import beamline.miners.trieconformance.util.Configuration.ConformanceCheckerType;
 import beamline.miners.trieconformance.util.Configuration.PartialOrderType;
 
 import java.io.*;
@@ -92,13 +87,9 @@ public class TrieConformance extends StreamMiningAlgorithm<ConformanceResponse> 
 
     }
 
-    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware, boolean adaptable) {
-        this.proxyTrie = constructTrie(proxyLog, 0);
-        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable, PartialOrderType.FREQUENCY_RANDOM);
-    }
-    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware, boolean adaptable, int maxPatternSize, PartialOrderType backToTheOrder) {
+    public TrieConformance(String proxyLog, int minDecayTime, float decayTimeMultiplier, boolean eventTimeAware, boolean adaptable, int maxPatternSize, PartialOrderType backToTheOrder, float ewmaAlpha) {
         this.proxyTrie = constructTrie(proxyLog, maxPatternSize);
-        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable, backToTheOrder);
+        this.checker = new EventTimeAwareStreamingConformanceChecker(this.proxyTrie, 1,1,100000,100000,minDecayTime,decayTimeMultiplier,true, eventTimeAware, adaptable, backToTheOrder,ewmaAlpha);
 
     }
 

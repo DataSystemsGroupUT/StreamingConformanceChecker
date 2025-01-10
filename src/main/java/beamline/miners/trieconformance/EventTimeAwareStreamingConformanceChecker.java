@@ -11,7 +11,6 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecker{
 
@@ -38,14 +37,14 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
 
     protected ConcurrentHashMap<String, Pair<TreeMap<Long, List<String>>,List<Pair<String,Long>>>> casesTimelines;
 
-    protected float ewmaAlpha = 0.005F;
+    protected float ewmaAlpha; // = 0.005F;
 
     protected PartialOrderType backToTheOrderType;
 
 
 
 
-    public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware, boolean adaptable, PartialOrderType backToTheOrderType)
+    public EventTimeAwareStreamingConformanceChecker(Trie trie, int logCost, int modelCost, int stateLimit, int caseLimit, int minDecayTime, float decayTimeMultiplier, boolean discountedDecayTime, boolean eventTimeAware, boolean adaptable, PartialOrderType backToTheOrderType, float ewmaAlpha)
     {
         super(trie, logCost, modelCost, stateLimit);
         this.stateLimit = stateLimit; //  to-be implemented
@@ -65,6 +64,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
         this.casesSeen = new ConcurrentLinkedQueue<>();
         this.casesTimelines = new ConcurrentHashMap<>();
         this.backToTheOrderType = backToTheOrderType;
+        this.ewmaAlpha = ewmaAlpha;
     }
 
     public void updateDecayTimeMultiplier(boolean outOfOrder) {
@@ -445,7 +445,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
 
         // none of the permutations gets a full match, so we attempt to find the optimal permutation.
         // The PartialOrderType parameter defines which optimizations we attempt.
-        if (backToTheOrderType.equals(PartialOrderType.FREQUENCY_RANDOM)) {
+        if (backToTheOrderType.equals(PartialOrderType.NGRAMS)) {
             // this is the frequency based approach
             // we choose the permutation that is most frequent in the trie
             List<Map.Entry<List<String>, Integer>> patternFrequencies = modelTrie.getPatternFrequencySorted();
@@ -476,7 +476,7 @@ public class EventTimeAwareStreamingConformanceChecker extends ConformanceChecke
                 output = input;
             }
 
-        } else if (backToTheOrderType.equals(PartialOrderType.MINITRIE)) {
+        } else if (backToTheOrderType.equals(PartialOrderType.GREEDY)) {
             // minitrie (greedy) solution
             // we switch between match and matchInHops until one permutation remains or permutations have run out of events
             // OR the hop size becomes larger than permutation size

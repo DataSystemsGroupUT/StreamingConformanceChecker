@@ -31,9 +31,8 @@ public class Configuration {
     public enum PartialOrderType
     {
         NONE, // partial order is not handled, same as DOLAP version
-        FREQUENCY_RANDOM, //break-even is solved by random
-        MINITRIE,
-        FREQUENCY_MINITRIE //break-even is solved by minitrie
+        NGRAMS,
+        GREEDY
     }
     private ConformanceCheckerType confCheckerType;
 
