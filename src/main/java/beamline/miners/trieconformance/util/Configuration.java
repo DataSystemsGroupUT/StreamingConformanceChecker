@@ -28,6 +28,12 @@ public class Configuration {
         LOG_MOVE,
         MODEL_MOVE
     }
+    public enum PartialOrderType
+    {
+        NONE, // partial order is not handled, same as DOLAP version
+        NGRAMS,
+        GREEDY
+    }
     private ConformanceCheckerType confCheckerType;
 
     private String proxyLog;

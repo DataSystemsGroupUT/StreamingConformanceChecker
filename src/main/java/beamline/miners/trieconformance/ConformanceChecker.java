@@ -5,6 +5,7 @@ import beamline.miners.trieconformance.trie.Trie;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class ConformanceChecker implements Serializable {
     protected final Trie modelTrie;
@@ -12,7 +13,7 @@ public abstract class ConformanceChecker implements Serializable {
     protected final int modelMoveCost ;
     protected PriorityQueue<State> nextChecks;
     protected HashMap<String, State> tracesInBuffer;
-    protected HashMap<String, StatesBuffer> casesInBuffer;
+    protected ConcurrentHashMap<String, StatesBuffer> casesInBuffer;
     protected int cntr=1;
     protected int maxCasesInBuffer;
     //    private HashSet<State> seenBefore;
@@ -47,7 +48,7 @@ public abstract class ConformanceChecker implements Serializable {
         this.maxCasesInBuffer = maxCasesInQueue;
         nextChecks = new PriorityQueue<>(maxCasesInQueue);
         tracesInBuffer = new HashMap<>();
-        casesInBuffer = new HashMap<>();
+        casesInBuffer = new ConcurrentHashMap<>();
     }
 
     public abstract Alignment check(List<String> trace);
@@ -193,10 +194,10 @@ public abstract class ConformanceChecker implements Serializable {
     public StatesBuffer getTracesInBuffer(String id){
         if(casesInBuffer.containsKey(id))
             return this.casesInBuffer.get(id);
-        return new StatesBuffer(new HashMap<>());
+        return new StatesBuffer(new ConcurrentHashMap<>());
     }
 
-    public HashMap<String, StatesBuffer> getCasesInBuffer(){
+    public ConcurrentHashMap<String, StatesBuffer> getCasesInBuffer(){
         return this.casesInBuffer;
     }
 }

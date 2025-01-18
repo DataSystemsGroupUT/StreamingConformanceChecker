@@ -6,6 +6,7 @@ import beamline.miners.trieconformance.trie.Trie;
 import beamline.miners.trieconformance.trie.TrieNode;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class StreamingConformanceChecker extends ConformanceChecker{
 
@@ -217,7 +218,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
     public State getCurrentOptimalState(String caseId, boolean finalState){ //
         State state;
         StatesBuffer caseStatesInBuffer;
-        HashMap<String, State> currentStates;
+        ConcurrentHashMap<String, State> currentStates;
         List<State> statesList = new ArrayList<>();
 
         List<State> optimalStates = new ArrayList<>();
@@ -375,7 +376,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
         return new Alignment();
     }
 
-    public HashMap<String, State> check(List<String> trace, String caseId)
+    public ConcurrentHashMap<String, State> check(List<String> trace, String caseId)
     {
 
         traceSize = trace.size();
@@ -387,7 +388,7 @@ public class StreamingConformanceChecker extends ConformanceChecker{
         TrieNode prev;
         List<String> traceSuffix;
         int suffixLookAheadLimit;
-        HashMap<String, State> currentStates = new HashMap<>();
+        ConcurrentHashMap<String, State> currentStates = new ConcurrentHashMap<>();
         ArrayList<State> syncMoveStates = new ArrayList<>();
 
         // iterate over the trace - choose event by event
